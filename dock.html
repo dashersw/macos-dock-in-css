@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>macOS Dock – Horizontal</title>
+    <!-- ── General layout ── -->
+    <style>
+      :root {
+        --background-color: #1e1e1e;
+        --primary-color: #fff;
+        --transition-duration: 0.1s;
+        --transition-easing: linear;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          Oxygen,
+          Ubuntu,
+          Cantarell,
+          'Open Sans',
+          'Helvetica Neue',
+          sans-serif;
+        background: url('https://512pixels.net/downloads/macos-wallpapers-6k/26-Tahoe-Light-6K.png') center / cover
+          no-repeat;
+        background-color: var(--background-color);
+        color: var(--primary-color);
+        font-size: 13px;
+      }
+    </style>
+
+    <!-- ── Dock ── -->
+    <style>
+      .dock {
+        --x: -1000;
+        --items: 1;
+        --element-width-unitless: 60;
+        --element-width: calc(var(--element-width-unitless) * 1px);
+        --gap-unitless: 0;
+        --gap: calc(var(--gap-unitless) * 1px);
+        --min-width: calc(var(--element-width) * var(--items) + var(--gap) * calc((var(--items) - 1)));
+        --container-left: calc(50vw - var(--min-width) / 2);
+        --range: 3.5;
+        --magnification: 40;
+
+        position: fixed;
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: grid;
+        grid-template-columns: repeat(var(--items), auto);
+        align-items: end;
+        z-index: 3;
+        transition: transform calc(var(--transition-duration) * 1.2) var(--transition-easing);
+        gap: var(--gap);
+      }
+
+      /* Magnification pipeline */
+
+      .app {
+        /* Left offset of this element within the dock grid */
+        --element-left: calc(var(--element-width) * var(--index) + var(--gap) * (var(--index)));
+        /* Mouse X position relative to this element's left edge within the container */
+        --distance-to-container-left: calc(var(--x) * 1px - var(--element-left) - var(--container-left));
+        /* Signed distance from the mouse to this element's center */
+        --distance: calc((var(--distance-to-container-left) - var(--element-width) / 2 - var(--gap) / 2));
+        /* Absolute distance (CSS has no abs(), so max(d, -d) does the trick) */
+        --abs-distance: max(var(--distance), var(--distance) * -1);
+        /* Normalize to 0..1+ where 0 = cursor on this icon, 1 = at the edge of --range icons away */
+        --t: calc(var(--abs-distance) / (var(--range) * (var(--element-width-unitless) + var(--gap-unitless)) * 1px));
+        /* Clamp so icons beyond the range stay at their base size */
+        --t-clamped: min(var(--t), 1);
+        /* Invert: 1 = cursor here (full magnification), 0 = at/beyond range (no magnification) */
+        --s: calc(1 - var(--t-clamped));
+        /* Smoothstep s²(3 − 2s) — gives an ease-in-out curve instead of harsh linear falloff */
+        --smooth: calc(var(--s) * var(--s) * (3 - 2 * var(--s)));
+        /* Convert to a pixel-based scale factor (extra 1px avoids calc() collapsing unitless zero) */
+        --magnified: calc(var(--smooth) * 1px + 1px);
+        --magnified-normalized: calc(var(--magnified) - 1px);
+        /* Final icon width = base size + (0..1px smoothstep value × magnification amount) */
+        --final-width: calc(var(--element-width) + var(--magnified-normalized) * var(--magnification));
+      }
+
+      /* App icon layout & visuals */
+
+      .app {
+        grid-row: 1;
+        grid-column: calc(var(--index) + 1);
+        position: relative;
+        cursor: default;
+        animation: reverse-app-width var(--transition-duration) var(--transition-easing) forwards;
+        aspect-ratio: 1 / 1;
+        background-size: 100%;
+        background-position: center;
+        background-repeat: no-repeat;
+      }
+
+      .dock-bg {
+        grid-row: 1;
+        grid-column: 4 / -4;
+        align-self: end;
+        height: var(--element-width);
+        position: relative;
+        z-index: -1;
+        pointer-events: none;
+      }
+
+      .dock-bg::before {
+        content: '';
+        position: absolute;
+        inset: -4px;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 16px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+      }
+
+      .dock.hover .app {
+        animation: app-width var(--transition-duration) var(--transition-easing) forwards;
+      }
+
+      @keyframes app-width {
+        0% {
+          width: var(--element-width);
+        }
+        100% {
+          width: var(--final-width);
+        }
+      }
+
+      @keyframes reverse-app-width {
+        0% {
+          width: var(--final-width);
+        }
+        100% {
+          width: var(--element-width);
+        }
+      }
+
+      .name {
+        opacity: 0;
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 4px 8px;
+        background: rgba(0, 0, 0, 0.6);
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        pointer-events: none;
+        white-space: nowrap;
+      }
+
+      .dock.hover .app:hover .name {
+        opacity: 1;
+      }
+    </style>
+
+    <!-- ── Settings panel ── -->
+    <style>
+      .settings {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        background: rgba(30, 30, 30, 0.72);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 12px;
+        padding: 14px 16px;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        row-gap: 10px;
+        column-gap: 4px;
+        min-width: 200px;
+        z-index: 10;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+      }
+
+      .settings h3 {
+        grid-column: 1 / -1;
+        margin: 0 0 2px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: rgba(255, 255, 255, 0.5);
+      }
+
+      .settings label {
+        display: grid;
+        grid-template-columns: subgrid;
+        grid-column: 1 / -1;
+        align-items: center;
+        justify-items: end;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.85);
+      }
+
+      .settings label span {
+        justify-self: start;
+        font-variant-numeric: tabular-nums;
+        color: rgba(255, 255, 255, 0.5);
+      }
+
+      .settings input[type='range'] {
+        justify-self: stretch;
+        accent-color: #0a84ff;
+        margin: 0;
+      }
+
+      .settings .toggle-row {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.85);
+      }
+
+      .segmented-control {
+        display: flex;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+
+      .segmented-control input[type='radio'] {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .segmented-control label {
+        display: block;
+        grid-column: auto;
+        padding: 3px 10px;
+        font-size: 11px;
+        cursor: pointer;
+        color: rgba(255, 255, 255, 0.5);
+        transition: all 0.2s;
+      }
+
+      .segmented-control input[type='radio']:checked + label {
+        background: rgba(255, 255, 255, 0.18);
+        color: white;
+      }
+    </style>
+
+    <!-- ── Side dock (left / right) ── -->
+    <style>
+      body.dock-left .dock,
+      body.dock-right .dock {
+        --container-left: calc(50vh - var(--min-width) / 2);
+        bottom: auto;
+        top: 50%;
+        transform: translateY(-50%);
+        grid-template-columns: auto;
+        grid-template-rows: repeat(var(--items), auto);
+        align-items: center;
+      }
+
+      body.dock-left .app,
+      body.dock-right .app {
+        grid-column: 1;
+        grid-row: calc(var(--index) + 1);
+      }
+
+      body.dock-left .dock-bg,
+      body.dock-right .dock-bg {
+        grid-column: 1;
+        grid-row: 4 / -4;
+        align-self: stretch;
+        height: auto;
+        width: var(--element-width);
+      }
+
+      body.dock-left .name,
+      body.dock-right .name {
+        bottom: auto;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+
+      body.dock-left .dock {
+        left: 12px;
+        transform: translateY(-50%);
+        justify-items: start;
+      }
+
+      body.dock-left .dock-bg {
+        justify-self: start;
+      }
+
+      body.dock-left .name {
+        left: calc(100% + 8px);
+      }
+
+      body.dock-right .dock {
+        left: auto;
+        right: 12px;
+        justify-items: end;
+      }
+
+      body.dock-right .dock-bg {
+        justify-self: end;
+      }
+
+      body.dock-right .name {
+        left: auto;
+        right: calc(100% + 8px);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="settings">
+      <h3>Dock Settings</h3>
+      <label>
+        App size
+        <input type="range" id="appSize" min="32" max="96" value="60" />
+        <span id="appSizeVal">60</span>
+      </label>
+      <label>
+        Magnification
+        <input type="range" id="magnification" min="0" max="80" value="40" />
+        <span id="magnificationVal">40</span>
+      </label>
+      <label>
+        Range
+        <input type="range" id="range" min="1" max="8" step="0.5" value="3.5" />
+        <span id="rangeVal">3.5</span>
+      </label>
+      <div class="toggle-row">
+        Position
+        <div class="segmented-control">
+          <input type="radio" name="dockPosition" id="posBottom" value="bottom" checked />
+          <label for="posBottom">Bottom</label>
+          <input type="radio" name="dockPosition" id="posLeft" value="left" />
+          <label for="posLeft">Left</label>
+          <input type="radio" name="dockPosition" id="posRight" value="right" />
+          <label for="posRight">Right</label>
+        </div>
+      </div>
+    </div>
+    <div class="dock"></div>
+    <!-- ── Dock ── -->
+    <script>
+      const dock = document.querySelector('.dock')
+
+      const apps = [
+        {
+          icon: 'https://s3.macosicons.com/macosicons/icons/ZrptQsCki2/lowResPngFile_4a2f1b4c5001a04f4cd2e54f7116d16c_low_res_Finder_Beta_2__Liquid_Glass_.png',
+          name: 'Finder'
+        },
+        {
+          icon: 'https://s3.macosicons.com/macosicons/icons/ZTpqalXxE3/lowResPngFile_8f0aba462304996c37f9f506b368c53b_low_res_App_Store__MacOS_Tahoe_.png',
+          name: 'App Store'
+        },
+        {
+          icon: 'https://s3.macosicons.com/macosicons/icons/utug9Rt8g6/lowResPngFile_a0b8d534889b5695781a9a03f388e2d4_low_res_Safari__MacOS_Tahoe_.png',
+          name: 'Safari'
+        },
+        {
+          icon: 'https://s3.macosicons.com/macosicons/icons/JQL8D8bMM2/lowResPngFile_bb5a4b5042f5dbd01baf9c1697460774_JQL8D8bMM2.png',
+          name: 'Messages'
+        },
+        {
+          icon: 'https://s3.macosicons.com/macosicons/icons/OABVbEbk1D/lowResPngFile_1b3cda920534d66fcf25849afdeee35b_low_res_Mail__MacOS_Tahoe_.png',
+          name: 'Mail'
+        },
+        {
+          icon: 'https://s3.macosicons.com/macosicons/icons/5aA6m3BXxr/lowResPngFile_a3b2511cb67879107a0b6da86c3d1dc5_low_res_Maps__MacOS_Tahoe_.png',
+          name: 'Maps'
+        },
+        {
+          icon: 'https://s3.macosicons.com/macosicons/icons/GnoLTHQNAZ/lowResPngFile_f4e3bd7d0753d890bb3b53e3ea193cfe_low_res_Photos__MacOS_Tahoe_.png',
+          name: 'Photos'
+        },
+        {
+          icon: 'https://s3.macosicons.com/macosicons/icons/E0Ws4w1yiC/lowResPngFile_b04a7c53fd9f231f804bd3261bcb6430_low_res_Facetime.png',
+          name: 'FaceTime'
+        },
+        {
+          icon: 'https://s3.macosicons.com/macosicons/icons/aB61H9yTMc/lowResPngFile_5ca9bfc5bab8a02de674c8aafe0c6f19_low_res_Calendar.png',
+          name: 'Calendar'
+        },
+        {
+          icon: 'https://s3.macosicons.com/macosicons/icons/Tn8SuaHtAM/lowResPngFile_2a846d9fb757a742e6ab7ec9b243027e_low_res_Notes__MacOS_Tahoe_.png',
+          name: 'Notes'
+        },
+        {
+          icon: 'https://s3.macosicons.com/macosicons/icons/60EVxS5XYc/lowResPngFile_43fc64dd49d0125e9b34d1d49204cafb_low_res_Music__MacOS_Tahoe_.png',
+          name: 'Music'
+        },
+        {
+          icon: 'https://s3.macosicons.com/macosicons/icons/ke09iVGIts/lowResPngFile_9c4c56c407f28786a1e3b520d15581bd_low_res_Podcasts.png',
+          name: 'Podcasts'
+        },
+        {
+          icon: 'https://s3.macosicons.com/macosicons/icons/4isAl2yVd5/lowResPngFile_873e6a9cc3faa3d85478775ffb175472_low_res_Cursor.png',
+          name: 'Cursor'
+        }
+      ]
+
+      function drawDock() {
+        const spacerCount = 3
+        const totalItems = apps.length + spacerCount * 2
+        dock.style.setProperty('--items', totalItems)
+
+        const spacer = i => `<div class="app" style="--index: ${i}"></div>`
+
+        const spacers = (start, count) => Array.from({ length: count }, (_, i) => spacer(start + i)).join('')
+
+        dock.innerHTML =
+          spacers(0, spacerCount) +
+          apps
+            .map(
+              (app, index) => `
+              <div class="app" style="--index: ${index + spacerCount}; background-image: url('${app.icon}')">
+                <div class="name">${app.name}</div>
+              </div>`
+            )
+            .join('') +
+          spacers(apps.length + spacerCount, spacerCount) +
+          '<div class="dock-bg"></div>'
+      }
+
+      let bg = null
+      let cachedRect = null
+      let dockPosition = 'bottom'
+
+      function updateHoverState(x, y) {
+        const hasHover = dock.classList.contains('hover')
+
+        if (!hasHover) cachedRect = bg.getBoundingClientRect()
+
+        if (dockPosition === 'right') {
+          if (hasHover && (x < cachedRect.left - 15 || y < cachedRect.top || y > cachedRect.bottom)) {
+            dock.classList.remove('hover')
+          } else if (!hasHover && x > cachedRect.left - 5 && y > cachedRect.top && y < cachedRect.bottom) {
+            dock.classList.add('hover')
+          }
+        } else if (dockPosition === 'left') {
+          if (hasHover && (x > cachedRect.right + 15 || y < cachedRect.top || y > cachedRect.bottom)) {
+            dock.classList.remove('hover')
+          } else if (!hasHover && x < cachedRect.right + 5 && y > cachedRect.top && y < cachedRect.bottom) {
+            dock.classList.add('hover')
+          }
+        } else {
+          if (hasHover && (y < cachedRect.top - 15 || x < cachedRect.left || x > cachedRect.right)) {
+            dock.classList.remove('hover')
+          } else if (!hasHover && y > cachedRect.top - 5 && x > cachedRect.left && x < cachedRect.right) {
+            dock.classList.add('hover')
+          }
+        }
+      }
+
+      document.body.addEventListener('mousemove', e => {
+        bg = bg || dock.querySelector('.dock-bg')
+        updateHoverState(e.clientX, e.clientY)
+        dock.style.setProperty('--x', dockPosition !== 'bottom' ? e.clientY : e.clientX)
+        e.stopPropagation()
+      })
+
+      drawDock()
+    </script>
+
+    <!-- ── Settings panel ── -->
+    <script>
+      const settings = [
+        { id: 'appSize', prop: '--element-width-unitless' },
+        { id: 'magnification', prop: '--magnification' },
+        { id: 'range', prop: '--range' }
+      ]
+
+      for (const { id, prop } of settings) {
+        document.getElementById(id).addEventListener('input', e => {
+          dock.style.setProperty(prop, e.target.value)
+          document.getElementById(`${id}Val`).textContent = e.target.value
+        })
+      }
+
+      document.querySelectorAll('input[name="dockPosition"]').forEach(radio => {
+        radio.addEventListener('change', e => {
+          dockPosition = e.target.value
+          document.body.classList.remove('dock-left', 'dock-right')
+          if (dockPosition !== 'bottom') {
+            document.body.classList.add(`dock-${dockPosition}`)
+          }
+          dock.classList.remove('hover')
+        })
+      })
+    </script>
+  </body>
+</html>

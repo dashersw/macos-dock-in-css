@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Time Machine Timeline – Vertical</title>
+    <!-- ── General layout ── -->
+    <style>
+      :root {
+        --background-color: #1e1e1e;
+        --primary-color: #fff;
+        --tab-active-color: #383837;
+        --transition-duration: 0.162s;
+        --transition-easing: linear;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          Oxygen,
+          Ubuntu,
+          Cantarell,
+          'Open Sans',
+          'Helvetica Neue',
+          sans-serif;
+        background-color: var(--background-color);
+        color: var(--primary-color);
+        font-size: 13px;
+      }
+    </style>
+
+    <!-- ── History timeline ── -->
+    <style>
+      .history {
+        --y: -1000;
+        --items: 1;
+        --element-height-unitless: 2;
+        --element-height: calc(var(--element-height-unitless) * 1px);
+        --gap-unitless: 10;
+        --gap: calc(var(--gap-unitless) * 1px);
+        --history-width: 80;
+        --container-top: calc(50vh - var(--container-height) / 2);
+        --container-height: calc(var(--element-height) * var(--items) + var(--gap) * (var(--items)));
+        --range: 8;
+        --magnification: 10;
+
+        position: fixed;
+        right: 0;
+        width: calc(var(--history-width) * 1px);
+        z-index: 3;
+        height: var(--container-height);
+        top: var(--container-top);
+        transition: transform calc(var(--transition-duration) * 1.2) var(--transition-easing);
+      }
+
+      .history.hover {
+        --clamp: calc((var(--element-height) + var(--gap)) * var(--range) / 2);
+        transform: translateY(
+          clamp(calc(var(--clamp) * -1), calc((var(--y) * 1px - var(--container-top)) * -1), var(--clamp))
+        );
+      }
+
+      /* Magnification pipeline */
+
+      .history-entry {
+        /* Top offset of this element within the history container */
+        --element-top: calc(var(--element-height) * var(--index) + var(--gap) * (var(--index)));
+        /* Mouse Y position relative to this element's top edge within the container */
+        --distance-to-container-top: calc(var(--y) * 1px - var(--element-top) - var(--container-top));
+        /* Signed distance from the mouse to this element's center */
+        --distance: calc((var(--distance-to-container-top) - var(--element-height) / 2 - var(--gap) / 2));
+        /* Absolute distance (CSS has no abs(), so max(d, -d) does the trick) */
+        --abs-distance: max(var(--distance), var(--distance) * -1);
+        /* Normalize to 0..1+ where 0 = cursor on this entry, 1 = at the edge of --range entries away */
+        --t: calc(var(--abs-distance) / (var(--range) * (var(--element-height-unitless) + var(--gap-unitless)) * 1px));
+        /* Clamp so entries beyond the range stay at their base size */
+        --t-clamped: min(var(--t), 1);
+        /* Invert: 1 = cursor here (full magnification), 0 = at/beyond range (no magnification) */
+        --s: calc(1 - var(--t-clamped));
+        /* Smoothstep s²(3 − 2s) — gives an ease-in-out curve instead of harsh linear falloff */
+        --smooth: calc(var(--s) * var(--s) * (3 - 2 * var(--s)));
+        /* Convert to a pixel-based scale factor (extra 1px avoids calc() collapsing unitless zero) */
+        --magnified: calc(var(--smooth) * 1px + 1px);
+        --magnified-normalized: calc(var(--magnified) - 1px);
+        /* Final entry height = base size + (0..1px smoothstep value × magnification amount) */
+        --final-height: calc(var(--element-height) + var(--magnified-normalized) * var(--magnification));
+        --final-width: max(calc(var(--final-height) * 3), 16px);
+
+        position: relative;
+        cursor: default;
+        margin-left: auto;
+        top: 0;
+        width: var(--final-width);
+        padding: calc(var(--gap) / 2) 0;
+        animation: reverse-height var(--transition-duration) var(--transition-easing) forwards;
+      }
+
+      .history-entry:first-of-type {
+        margin-top: 0;
+      }
+
+      .history.hover .history-entry:hover .history-bar::before {
+        background: #ff5f56;
+      }
+
+      .history-bar {
+        position: absolute;
+        right: 0;
+        width: 100%;
+        height: calc(100% - var(--gap));
+        top: 50%;
+        transform: translateY(-50%);
+      }
+
+      .history-bar::before {
+        content: '';
+        position: absolute;
+        transform: translateY(-50%);
+        right: 0px;
+        height: 2px;
+        width: 16px;
+        top: 50%;
+        background: var(--tab-active-color);
+        z-index: -1;
+        transition:
+          height var(--transition-duration) var(--transition-easing),
+          width var(--transition-duration) var(--transition-easing);
+      }
+
+      .history-date {
+        opacity: 0;
+        position: absolute;
+        right: 100%;
+        padding: 0 5px;
+        border-radius: 0 0 0 10px;
+        pointer-events: none;
+        white-space: nowrap;
+        top: 2px;
+        text-shadow:
+          0 0 2px black,
+          0 0 3px black,
+          0 0 4px black,
+          0 0 5px black;
+      }
+
+      .history.hover .history-entry {
+        animation: height var(--transition-duration) var(--transition-easing) forwards;
+      }
+
+      @keyframes height {
+        0% {
+          height: var(--element-height);
+        }
+        100% {
+          height: var(--final-height);
+        }
+      }
+
+      @keyframes reverse-height {
+        0% {
+          height: var(--final-height);
+        }
+        100% {
+          height: var(--element-height);
+        }
+      }
+
+      .history.hover .history-entry:hover .history-date {
+        opacity: 1;
+      }
+
+      .history.hover .history-bar::before {
+        width: 100%;
+        height: 100%;
+      }
+
+      .hint {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        opacity: 0.3;
+        font-size: 14px;
+        pointer-events: none;
+      }
+    </style>
+
+    <!-- ── Settings panel ── -->
+    <style>
+      .settings {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        background: rgba(30, 30, 30, 0.72);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 12px;
+        padding: 14px 16px;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        row-gap: 10px;
+        column-gap: 4px;
+        min-width: 200px;
+        z-index: 10;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+      }
+
+      .settings h3 {
+        grid-column: 1 / -1;
+        margin: 0 0 2px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: rgba(255, 255, 255, 0.5);
+      }
+
+      .settings label {
+        display: grid;
+        grid-template-columns: subgrid;
+        grid-column: 1 / -1;
+        align-items: center;
+        justify-items: end;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.85);
+      }
+
+      .settings label span {
+        justify-self: start;
+        font-variant-numeric: tabular-nums;
+        color: rgba(255, 255, 255, 0.5);
+      }
+
+      .settings input[type='range'] {
+        justify-self: stretch;
+        accent-color: #0a84ff;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="settings">
+      <h3>Timeline Settings</h3>
+      <label>
+        Bar height
+        <input type="range" id="barHeight" min="1" max="8" value="2" />
+        <span id="barHeightVal">2</span>
+      </label>
+      <label>
+        Magnification
+        <input type="range" id="magnification" min="0" max="40" value="10" />
+        <span id="magnificationVal">10</span>
+      </label>
+      <label>
+        Gap
+        <input type="range" id="gap" min="4" max="32" value="10" />
+        <span id="gapVal">10</span>
+      </label>
+      <label>
+        Range
+        <input type="range" id="range" min="1" max="12" step="0.5" value="8" />
+        <span id="rangeVal">8</span>
+      </label>
+    </div>
+    <div class="hint">Hover near the right edge</div>
+    <div class="history"></div>
+    <!-- ── History timeline ── -->
+    <script>
+      const historyContainer = document.querySelector('.history')
+      let screenWidth = window.innerWidth
+
+      const options = {
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }
+
+      function generateMockHistory() {
+        const now = Date.now()
+        const entries = []
+        for (let i = 0; i < 200; i++) {
+          entries.push(now - i * 1000 * 60 * 30)
+        }
+        return entries.reverse()
+      }
+
+      function drawHistory() {
+        screenWidth = window.innerWidth
+        const screenHeight = window.innerHeight
+        const elHeight =
+          parseFloat(getComputedStyle(historyContainer).getPropertyValue('--element-height-unitless')) || 2
+        const gapSize = parseFloat(getComputedStyle(historyContainer).getPropertyValue('--gap-unitless')) || 10
+        const maxItems = Math.floor((screenHeight - 100) / (elHeight + gapSize))
+        const allKeys = generateMockHistory()
+        const shownKeys = allKeys.slice(-maxItems)
+
+        historyContainer.style.setProperty('--items', shownKeys.length)
+
+        historyContainer.innerHTML = shownKeys
+          .map((ts, index) => {
+            const formattedDate = new Intl.DateTimeFormat(undefined, options).format(new Date(ts))
+            return `
+              <div class="history-entry" data-id="${ts}" style="--index: ${index}">
+                <div class="history-bar">
+                  <div class="history-date">${formattedDate}</div>
+                </div>
+              </div>`
+          })
+          .join('')
+      }
+
+      let cachedRect = null
+
+      document.body.addEventListener('mousemove', e => {
+        const x = e.clientX
+        const y = e.clientY
+        const hasHover = historyContainer.classList.contains('hover')
+
+        if (!hasHover) cachedRect = historyContainer.getBoundingClientRect()
+
+        if ((hasHover && x < cachedRect.right - 50) || y < cachedRect.top - 30 || y > cachedRect.bottom + 30) {
+          historyContainer.classList.remove('hover')
+        } else if (!hasHover && x > cachedRect.right - 40 && y > cachedRect.top - 30 && y < cachedRect.bottom + 30) {
+          historyContainer.classList.add('hover')
+        }
+
+        historyContainer.style.setProperty('--y', y)
+        e.stopPropagation()
+      })
+
+      window.addEventListener('resize', drawHistory)
+      drawHistory()
+    </script>
+
+    <!-- ── Settings panel ── -->
+    <script>
+      const settings = [
+        { id: 'barHeight', prop: '--element-height-unitless' },
+        { id: 'magnification', prop: '--magnification' },
+        { id: 'gap', prop: '--gap-unitless' },
+        { id: 'range', prop: '--range' }
+      ]
+
+      for (const { id, prop } of settings) {
+        document.getElementById(id).addEventListener('input', e => {
+          historyContainer.style.setProperty(prop, e.target.value)
+          document.getElementById(`${id}Val`).textContent = e.target.value
+          if (id === 'barHeight' || id === 'gap') drawHistory()
+        })
+      }
+    </script>
+  </body>
+</html>
